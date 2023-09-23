@@ -36,6 +36,11 @@ class ServoTuner: LinearOpMode() {
             val delta = System.currentTimeMillis() - last
             last = System.currentTimeMillis()
 
+            if(gamepad1.dpad_left) selectedServo = SelectedServo.FILTER_LEFT
+            else if(gamepad1.dpad_right) selectedServo = SelectedServo.FILTER_RIGHT
+            else if(gamepad1.dpad_up) selectedServo = SelectedServo.STORAGE_LEFT
+            else if(gamepad1.dpad_down) selectedServo = SelectedServo.STORAGE_RIGHT
+
             val servo = when(selectedServo) {
                 SelectedServo.FILTER_LEFT -> filterLeft
                 SelectedServo.FILTER_RIGHT -> filterRight
