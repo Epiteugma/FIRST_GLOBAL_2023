@@ -48,6 +48,8 @@ class ServoTuner: LinearOpMode() {
                 SelectedServo.STORAGE_RIGHT -> storageRight
             }
 
+            if(gamepad1.b) break;
+
             servo.position = round(maxOf(minOf(servo.position - gamepad1.left_stick_y * delta/1000, 1.0), 0.0) * 100) / 100
 
             telemetry.addData("Selected servo", selectedServo);
