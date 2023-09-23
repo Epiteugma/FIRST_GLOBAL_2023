@@ -62,6 +62,11 @@ class Drive: LinearOpMode() {
         leftSlide = hardwareMap.get(DcMotor::class.java, "leftSlide")
         rightSlide = hardwareMap.get(DcMotor::class.java, "rightSlide")
 
+        filterServoLeft = hardwareMap.get(Servo::class.java, "filterLeft")
+        filterServoRight = hardwareMap.get(Servo::class.java, "filterRight")
+        storageServoLeft = hardwareMap.get(Servo::class.java, "storageLeft")
+        storageServoRight = hardwareMap.get(Servo::class.java, "storageRight")
+
         // Brake drivetrain when control released
         left.zeroPowerBehavior = DcMotor.ZeroPowerBehavior.BRAKE
         right.zeroPowerBehavior = DcMotor.ZeroPowerBehavior.BRAKE
