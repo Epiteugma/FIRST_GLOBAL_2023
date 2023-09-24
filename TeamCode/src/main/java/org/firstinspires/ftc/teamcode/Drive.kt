@@ -16,19 +16,18 @@ class Drive: LinearOpMode() {
     private val SLIDE_MLT = 1.0
     private val HOLD_POWER = 1.0
 
-    // TODO: tune these
-    private val FILTER_UPWARDS = arrayOf(0.0, 0.0)
-    private val FILTER_DOWNWARDS = arrayOf(1.0, 1.0)
-    private val FILTER_CENTER = arrayOf(0.5, 0.5)
+    private val FILTER_UPWARDS = arrayOf(0.8, 0.0)
+    private val FILTER_DOWNWARDS = arrayOf(0.09, 0.67)
+    private val FILTER_CENTER = arrayOf(0.42, 0.34)
 
-    private val STORAGE_CLOSED = arrayOf(0.0, 0.0)
-    private val STORAGE_OPEN = arrayOf(1.0, 1.0)
+    private val STORAGE_CLOSED = arrayOf(0.22, 1.0)
+    private val STORAGE_OPEN = arrayOf(0.6, 0.62)
 
     // Hardware Devices
     private lateinit var left: DcMotor
     private lateinit var right: DcMotor
-    private lateinit var leftSlide: DcMotor
-    private lateinit var rightSlide: DcMotor
+    private lateinit var leftLift: DcMotor
+    private lateinit var rightLift: DcMotor
 
     private lateinit var filterServoLeft: Servo
     private lateinit var filterServoRight: Servo
@@ -59,8 +58,8 @@ class Drive: LinearOpMode() {
         // Hardware Initialization
         left = hardwareMap.get(DcMotor::class.java, "left")
         right = hardwareMap.get(DcMotor::class.java, "right")
-        leftSlide = hardwareMap.get(DcMotor::class.java, "leftSlide")
-        rightSlide = hardwareMap.get(DcMotor::class.java, "rightSlide")
+        leftLift = hardwareMap.get(DcMotor::class.java, "leftLift")
+        rightLift = hardwareMap.get(DcMotor::class.java, "rightLift")
 
         filterServoLeft = hardwareMap.get(Servo::class.java, "filterLeft")
         filterServoRight = hardwareMap.get(Servo::class.java, "filterRight")
@@ -72,20 +71,7 @@ class Drive: LinearOpMode() {
         right.zeroPowerBehavior = DcMotor.ZeroPowerBehavior.BRAKE
 
         val initTime = System.currentTimeMillis()
-        var lastDotsIncrement = System.currentTimeMillis()
-        var dots = 0
-
-        // Waiting for start telemetry
-        while(opModeInInit()) {
-            telemetry.addData("Waiting for start" + ".".repeat(dots), "")
-            telemetry.update()
-
-            if(lastDotsIncrement + 500 > System.currentTimeMillis()) {
-                lastDotsIncrement = System.currentTimeMillis()
-                dots = (dots + 1) % 4
-            }
-        }
-
+        waitForStart()
         val startTime = System.currentTimeMillis()
 
         // Driver 1 Thread
@@ -99,10 +85,10 @@ class Drive: LinearOpMode() {
         // Driver 2 Thread
         thread(name = "DRIVER2", start = true) {
             while (opModeIsActive()) {
-                if(gamepad2.left_stick_y != 0.0f) for (motor in listOf(leftSlide, rightSlide)) {
+                if(gamepad2.left_stick_y != 0.0f) for (motor in listOf(leftLift, rightLift)) {
                     motor.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
                     motor.power = gamepad2.left_stick_y * SLIDE_MLT
-                } else for (motor in listOf(leftSlide, rightSlide)) {
+                } else for (motor in listOf(leftLift, rightLift)) {
                     motor.targetPosition = motor.currentPosition
                     motor.mode = DcMotor.RunMode.RUN_TO_POSITION
                     motor.power = HOLD_POWER
@@ -154,11 +140,11 @@ class Drive: LinearOpMode() {
             telemetry.addData("", "")
 
             telemetry.addData("--- SLIDES ---", "")
-            telemetry.addData("Mode", leftSlide.mode)
-            if(leftSlide.mode == DcMotor.RunMode.RUN_TO_POSITION) {
-                telemetry.addData("Left target", leftSlide.targetPosition)
-                telemetry.addData("Right target", rightSlide.targetPosition)
-            } else telemetry.addData("Power", leftSlide.power)
+            telemetry.addData("Mode", leftLift.mode)
+            if(leftLift.mode == DcMotor.RunMode.RUN_TO_POSITION) {
+                telemetry.addData("Left target", leftLift.targetPosition)
+                telemetry.addData("Right target", rightLift.targetPosition)
+            } else telemetry.addData("Power", leftLift.power)
             telemetry.addData("", "")
 
             telemetry.addData("--- SERVOS ---", "")
@@ -171,12 +157,12 @@ class Drive: LinearOpMode() {
             telemetry.addData("", "")
 
             telemetry.addData("--- HEALTH ---", "")
-            telemetry.addData("Runtime since INIT", String.format("%.2fs", (System.currentTimeMillis() - initTime) / 1000))
-            telemetry.addData("Runtime since START", String.format("%.2fs", (System.currentTimeMillis() - startTime) / 1000))
+            telemetry.addData("Runtime since INIT", String.format("%.2fs", (System.currentTimeMillis() - initTime) / 1000f))
+            telemetry.addData("Runtime since START", String.format("%.2fs", (System.currentTimeMillis() - startTime) / 1000f))
 
             val hubs = hardwareMap.getAll(LynxModule::class.java)
             telemetry.addData("Hubs detected", hubs.size)
-            for(i in 0..hubs.size) {
+            for(i in 0..<hubs.size) {
                 telemetry.addData("HUB$i voltage", String.format("%.2fV", hubs[i].getInputVoltage(VoltageUnit.VOLTS)))
                 telemetry.addData("HUB$i current", String.format("%.2fA", hubs[i].getCurrent(CurrentUnit.AMPS)))
             }
