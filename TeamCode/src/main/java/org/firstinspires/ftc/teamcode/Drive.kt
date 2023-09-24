@@ -4,6 +4,7 @@ import com.qualcomm.hardware.lynx.LynxModule
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp
 import com.qualcomm.robotcore.hardware.DcMotor
+import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.Servo
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit
 import org.firstinspires.ftc.robotcore.external.navigation.VoltageUnit
@@ -13,8 +14,17 @@ import kotlin.concurrent.thread
 class Drive: LinearOpMode() {
     // Control variables
     private val DRIVE_MLT = 1.0
-    private val SLIDE_MLT = 1.0
+    private val LIFT_MLT = 1.0
+    private val COLLECTOR_MLT = 1.0
     private val HOLD_POWER = 1.0
+
+    private val DRIVE_GEARBOX = 12.0
+    private val LIFT_GEARBOX = 15.0
+    private val COLLECTOR_GEARBOX = 4.0
+
+    private val DRIVE_TYPE = MotorType.HD_HEX
+    private val LIFT_TYPE = MotorType.HD_HEX
+    private val COLLECTOR_TYPE = MotorType.HD_HEX
 
     private val FILTER_UPWARDS = arrayOf(0.8, 0.0)
     private val FILTER_DOWNWARDS = arrayOf(0.09, 0.67)
@@ -24,15 +34,28 @@ class Drive: LinearOpMode() {
     private val STORAGE_OPEN = arrayOf(0.6, 0.62)
 
     // Hardware Devices
-    private lateinit var left: DcMotor
-    private lateinit var right: DcMotor
-    private lateinit var leftLift: DcMotor
-    private lateinit var rightLift: DcMotor
+    private lateinit var left: DcMotorEx
+    private lateinit var right: DcMotorEx
+    private lateinit var leftLift: DcMotorEx
+    private lateinit var rightLift: DcMotorEx
+    private lateinit var collector: DcMotorEx
 
     private lateinit var filterServoLeft: Servo
     private lateinit var filterServoRight: Servo
     private lateinit var storageServoLeft: Servo
     private lateinit var storageServoRight: Servo
+
+    // Motor constants
+    private val driveTicksPerRev = DRIVE_TYPE.ticksAtMotor * DRIVE_GEARBOX
+    private val liftTicksPerRev = LIFT_TYPE.ticksAtMotor * LIFT_GEARBOX
+    private val collectorTicksPerRev = COLLECTOR_TYPE.ticksAtMotor * COLLECTOR_GEARBOX
+
+    // Motor types
+    private enum class MotorType(public val ticksAtMotor: Double) {
+        CORE_HEX(288.0),
+        HD_HEX(28.0);
+
+    }
 
     // Servo State Enums
     private enum class FilterState {
@@ -56,15 +79,18 @@ class Drive: LinearOpMode() {
 
     override fun runOpMode() {
         // Hardware Initialization
-        left = hardwareMap.get(DcMotor::class.java, "left")
-        right = hardwareMap.get(DcMotor::class.java, "right")
-        leftLift = hardwareMap.get(DcMotor::class.java, "leftLift")
-        rightLift = hardwareMap.get(DcMotor::class.java, "rightLift")
+        left = hardwareMap.get(DcMotorEx::class.java, "left")
+        right = hardwareMap.get(DcMotorEx::class.java, "right")
+        leftLift = hardwareMap.get(DcMotorEx::class.java, "leftLift")
+        rightLift = hardwareMap.get(DcMotorEx::class.java, "rightLift")
+        collector = hardwareMap.get(DcMotorEx::class.java, "collector")
 
         filterServoLeft = hardwareMap.get(Servo::class.java, "filterLeft")
         filterServoRight = hardwareMap.get(Servo::class.java, "filterRight")
         storageServoLeft = hardwareMap.get(Servo::class.java, "storageLeft")
         storageServoRight = hardwareMap.get(Servo::class.java, "storageRight")
+
+        // TODO: Reverse the motors
 
         // Brake drivetrain when control released
         left.zeroPowerBehavior = DcMotor.ZeroPowerBehavior.BRAKE
@@ -77,8 +103,10 @@ class Drive: LinearOpMode() {
         // Driver 1 Thread
         thread(name = "DRIVER1", start = true) {
             while (opModeIsActive()) {
-                left.power = (-gamepad1.left_stick_y - gamepad1.left_stick_x) * DRIVE_MLT
-                right.power = (-gamepad1.left_stick_y + gamepad1.left_stick_x) * DRIVE_MLT
+                left.velocity = (-gamepad1.left_stick_y - gamepad1.left_stick_x) * driveTicksPerRev * DRIVE_MLT
+                right.velocity = (-gamepad1.left_stick_y + gamepad1.left_stick_x) * driveTicksPerRev * DRIVE_MLT
+
+                collector.velocity = collectorTicksPerRev * COLLECTOR_MLT
             }
         }
 
@@ -87,7 +115,7 @@ class Drive: LinearOpMode() {
             while (opModeIsActive()) {
                 if(gamepad2.left_stick_y != 0.0f) for (motor in listOf(leftLift, rightLift)) {
                     motor.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
-                    motor.power = gamepad2.left_stick_y * SLIDE_MLT
+                    motor.velocity = gamepad2.left_stick_y * liftTicksPerRev * LIFT_MLT
                 } else for (motor in listOf(leftLift, rightLift)) {
                     motor.targetPosition = motor.currentPosition
                     motor.mode = DcMotor.RunMode.RUN_TO_POSITION
@@ -135,8 +163,9 @@ class Drive: LinearOpMode() {
         // Telemetry in main thread
         while (opModeIsActive()) {
             telemetry.addData("--- DRIVETRAIN ---", "")
-            telemetry.addData("Left Power", left.power)
-            telemetry.addData("Right Power", right.power)
+            telemetry.addData("Left Power", left.velocity / driveTicksPerRev)
+            telemetry.addData("Right Power", right.velocity / driveTicksPerRev)
+            telemetry.addData("Collector Power", collector.velocity / collectorTicksPerRev)
             telemetry.addData("", "")
 
             telemetry.addData("--- SLIDES ---", "")
@@ -144,7 +173,7 @@ class Drive: LinearOpMode() {
             if(leftLift.mode == DcMotor.RunMode.RUN_TO_POSITION) {
                 telemetry.addData("Left target", leftLift.targetPosition)
                 telemetry.addData("Right target", rightLift.targetPosition)
-            } else telemetry.addData("Power", leftLift.power)
+            } else telemetry.addData("Power", leftLift.velocity / liftTicksPerRev)
             telemetry.addData("", "")
 
             telemetry.addData("--- SERVOS ---", "")
