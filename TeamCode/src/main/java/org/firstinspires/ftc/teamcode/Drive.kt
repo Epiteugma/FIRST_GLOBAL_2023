@@ -15,6 +15,8 @@ import kotlin.concurrent.thread
 class Drive: LinearOpMode() {
     // Control variables
     private val DRIVE_MODE = DriveMode.JOYSTICK
+    private val COLLECTOR_STALL_THRESHOLD = 1000
+    private val COLLECTOR_STALL_RELEASE_TIME = 500
 
     private val DRIVE_MLT = 1.0
     private val LIFT_MLT = 1.0
@@ -53,9 +55,9 @@ class Drive: LinearOpMode() {
     private var collectorLock = false
 
     // Motor constants
-    private val driveTicksPerSec = DRIVE_TYPE.ticksAtMotor * DRIVE_TYPE.rpm / 60 * DRIVE_GEARBOX
-    private val liftTicksPerSec = LIFT_TYPE.ticksAtMotor * LIFT_TYPE.rpm / 60 * LIFT_GEARBOX
-    private val collectorTicksPerSec = COLLECTOR_TYPE.ticksAtMotor * COLLECTOR_TYPE.rpm / 60 * COLLECTOR_GEARBOX
+    private val driveTicksPerSec = DRIVE_TYPE.ticksAtMotor * (DRIVE_TYPE.rpm / 60)
+    private val liftTicksPerSec = LIFT_TYPE.ticksAtMotor * (LIFT_TYPE.rpm / 60)
+    private val collectorTicksPerSec = COLLECTOR_TYPE.ticksAtMotor * (COLLECTOR_TYPE.rpm / 60)
 
     // Slide targets
     private var leftLiftTarget = 0
@@ -109,7 +111,7 @@ class Drive: LinearOpMode() {
         // Reverse the motors
         collector.direction = DcMotorSimple.Direction.REVERSE
         right.direction = DcMotorSimple.Direction.REVERSE
-        rightLift.direction = DcMotorSimple.Direction.REVERSE
+        leftLift.direction = DcMotorSimple.Direction.REVERSE
 
         // Brake drivetrain when control released
         right.zeroPowerBehavior = DcMotor.ZeroPowerBehavior.BRAKE
@@ -121,32 +123,30 @@ class Drive: LinearOpMode() {
 
         // Driver 1 Thread
         thread(name = "DRIVER1", start = true) {
-            var last = System.currentTimeMillis()
-            var lastCollectorRetract = last - 1000
-            var lastCollectorPosition = collector.currentPosition
+            var collectorStartTime = 0L
+            var collectorStallTime = 0L
             while (opModeIsActive()) {
-                val delta = System.currentTimeMillis() - last
-                last = System.currentTimeMillis()
                 if(DRIVE_MODE == DriveMode.JOYSTICK) {
-                    left.velocity = (-gamepad1.left_stick_y + gamepad1.left_stick_x) * driveTicksPerSec * DRIVE_MLT
-                    right.velocity = (-gamepad1.left_stick_y - gamepad1.left_stick_x) * driveTicksPerSec * DRIVE_MLT
+                    left.power = -gamepad1.left_stick_y + gamepad1.left_stick_x * DRIVE_MLT
+                    right.power = -gamepad1.left_stick_y - gamepad1.left_stick_x * DRIVE_MLT
                 } else if(DRIVE_MODE == DriveMode.TANK) {
-                    left.velocity = -gamepad1.left_stick_y * driveTicksPerSec * DRIVE_MLT
-                    right.velocity = - gamepad1.right_stick_y * driveTicksPerSec * DRIVE_MLT
+                    left.power = -gamepad1.left_stick_y * DRIVE_MLT
+                    right.power = -gamepad1.right_stick_y * DRIVE_MLT
                 }
 
                 if(gamepad2.b && !collectorLock) collectorOn = !collectorOn
                 collectorLock = gamepad2.b
 
-                val targetVelocity = collectorTicksPerSec * COLLECTOR_MLT
-                val realVelocity = collector.currentPosition - lastCollectorPosition / delta / 1000
-                lastCollectorPosition = collector.currentPosition
+                val collectorPower = COLLECTOR_MLT
 
-                if(realVelocity < targetVelocity * 0.2 && (System.currentTimeMillis() - lastCollectorRetract) > 2000) lastCollectorRetract = System.currentTimeMillis()
+                if(collector.power == 0.0 && collectorOn) collectorStartTime = System.currentTimeMillis()
+                collectorStartTime = maxOf(collectorStallTime + COLLECTOR_STALL_RELEASE_TIME, collectorStartTime)
 
-                collector.velocity = if(!collectorOn) 0.0
-                else if(lastCollectorRetract < 1500) -targetVelocity
-                else targetVelocity
+                if(collector.velocity < collectorPower * 0.2 && System.currentTimeMillis() - collectorStartTime > COLLECTOR_STALL_THRESHOLD) collectorStallTime = System.currentTimeMillis()
+
+                collector.power = if(!collectorOn) 0.0
+                else if(System.currentTimeMillis() - collectorStallTime < COLLECTOR_STALL_RELEASE_TIME) -collectorPower
+                else collectorPower
             }
         }
 
@@ -157,7 +157,7 @@ class Drive: LinearOpMode() {
                     if(motor == leftLift) leftLiftTarget = 0
                     else rightLiftTarget = 0
                     motor.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
-                    motor.velocity = gamepad2.left_stick_y * liftTicksPerSec * LIFT_MLT
+                    motor.power = -gamepad2.left_stick_y * LIFT_MLT
                 } else for (motor in listOf(rightLift, leftLift)) {
                     if(motor == leftLift && leftLiftTarget == 0) leftLiftTarget = motor.currentPosition
                     else if(motor == rightLift && rightLiftTarget == 0) rightLiftTarget = motor.currentPosition
@@ -218,14 +218,15 @@ class Drive: LinearOpMode() {
         while (opModeIsActive()) {
             telemetry.addData("--- DRIVETRAIN ---", "")
             telemetry.addData("Mode", DRIVE_MODE)
-            telemetry.addData("Left Power", right.velocity / driveTicksPerSec * 10)
-            telemetry.addData("Right Power", left.velocity / driveTicksPerSec * 10)
+            telemetry.addData("Left Power", right.velocity / driveTicksPerSec)
+            telemetry.addData("Right Power", left.velocity / driveTicksPerSec)
             telemetry.addData("", "")
 
             telemetry.addData("--- Collector ---", "")
             telemetry.addData("On", collectorOn)
             telemetry.addData("Lock", collectorLock)
-            telemetry.addData("Power", collector.velocity / collectorTicksPerSec * 10)
+            telemetry.addData("Power", collector.velocity / collectorTicksPerSec)
+            telemetry.addData("Stall check", collector.velocity < collectorTicksPerSec * 0.2)
             telemetry.addData("", "")
 
             telemetry.addData("--- SLIDES ---", "")
@@ -233,7 +234,7 @@ class Drive: LinearOpMode() {
             if(rightLift.mode == DcMotor.RunMode.RUN_TO_POSITION) {
                 telemetry.addData("Left target", rightLift.targetPosition)
                 telemetry.addData("Right target", leftLift.targetPosition)
-            } else telemetry.addData("Power", rightLift.velocity / liftTicksPerSec * 10)
+            } else telemetry.addData("Power", rightLift.velocity / liftTicksPerSec)
             telemetry.addData("", "")
 
             telemetry.addData("--- SERVOS ---", "")
