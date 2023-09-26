@@ -49,7 +49,8 @@ class Drive: LinearOpMode() {
 
     // Collector toggle
     private var collectorOn = true
-    private var collectorLock = false
+    private var collectorLock1 = false
+    private var collectorLock2 = false
 
     // Motor constants
     private val driveTicksPerSec = DRIVE_TYPE.ticksAtMotor * (DRIVE_TYPE.rpm / 60)
@@ -137,8 +138,11 @@ class Drive: LinearOpMode() {
                 }
 
                 // Collector toggle
-                if(gamepad2.b && !collectorLock) collectorOn = !collectorOn
-                collectorLock = gamepad2.b
+                if(gamepad2.b && !collectorLock1) collectorOn = !collectorOn
+                collectorLock1 = gamepad2.b
+
+                if(gamepad1.b && !collectorLock2) collectorOn = !collectorOn
+                collectorLock2 = gamepad1.b
 
                 val collectorPower = COLLECTOR_MLT
 
@@ -175,13 +179,22 @@ class Drive: LinearOpMode() {
                     motor.power = HOLD_POWER
                 }
 
-                // Lift -> hook "master -> slave" relationship
-                if(liftPower < 0) hook.power = liftPower
-                else if(liftPower == 0.0) {
-                    if(hookTarget == 0) hookTarget = hook.currentPosition
-                    hook.targetPosition = hookTarget
-                    hook.mode = DcMotor.RunMode.RUN_TO_POSITION
-                    hook.power = HOLD_POWER
+                // [Lift -> hook] "master -> slave" relationship
+                if(liftPower < 0) {
+                    hookTarget = 0
+                    hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
+                    hook.power = liftPower
+                } else if(liftPower == 0.0) {
+                    if(gamepad2.right_stick_y != 0f) {
+                        hookTarget = 0
+                        hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
+                        hook.power = gamepad2.right_stick_y.toDouble()
+                    } else {
+                        if (hookTarget == 0) hookTarget = hook.currentPosition
+                        hook.targetPosition = hookTarget
+                        hook.mode = DcMotor.RunMode.RUN_TO_POSITION
+                        hook.power = HOLD_POWER
+                    }
                 } else {
                     hookTarget = 0
                     hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
@@ -240,10 +253,12 @@ class Drive: LinearOpMode() {
             telemetry.addData("--- HOOK ---", "")
             if(leftLift.power < 0) telemetry.addData("Power", hook.velocity / hookTicksPerSec)
             else telemetry.addData("Target", hookTarget)
+            telemetry.addData("", "")
 
             telemetry.addData("--- Collector ---", "")
             telemetry.addData("On", collectorOn)
-            telemetry.addData("Lock", collectorLock)
+            telemetry.addData("Lock1", collectorLock1)
+            telemetry.addData("Lock2", collectorLock2)
             telemetry.addData("Power", collector.velocity / collectorTicksPerSec)
             telemetry.addData("Stall check", collector.velocity < collectorTicksPerSec * 0.2)
             telemetry.addData("", "")
