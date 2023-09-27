@@ -185,8 +185,8 @@ class Drive: LinearOpMode() {
                 if(liftPower != 0.0) {
                     hookTarget = 0
                     hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
-                    hook.power = if(liftPower < 0) liftPower * HOOK_MLT_DOWN
-                    else liftPower * HOOK_MLT_UP
+                    hook.power = if(liftPower < 0) -liftPower * HOOK_MLT_DOWN
+                    else -liftPower * HOOK_MLT_UP
                 } else {
                     if(gamepad2.right_stick_y != 0f) {
                         hookTarget = 0
