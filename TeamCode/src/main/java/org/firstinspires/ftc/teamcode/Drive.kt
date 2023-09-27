@@ -14,7 +14,7 @@ import kotlin.concurrent.thread
 @TeleOp(name = "Drive (FGC 2023)", group = "FGC 2023")
 class Drive: LinearOpMode() {
     // Control variables
-    private val DRIVE_MODE = DriveMode.JOYSTICK
+    private val DRIVE_MODE = DriveMode.TANK
     private val COLLECTOR_STALL_THRESHOLD = 1000
     private val COLLECTOR_STALL_RELEASE_TIME = 500
 
@@ -22,6 +22,8 @@ class Drive: LinearOpMode() {
     private val LIFT_MLT = 1.0
     private val COLLECTOR_MLT = 1.0
     private val HOLD_POWER = 1.0
+    private val HOOK_MLT_UP = 1.0
+    private val HOOK_MLT_DOWN = 0.5
 
     private val DRIVE_TYPE = MotorType.HD_HEX
     private val LIFT_TYPE = MotorType.HD_HEX
@@ -150,7 +152,7 @@ class Drive: LinearOpMode() {
                 if(collector.power == 0.0 && collectorOn) collectorStartTime = System.currentTimeMillis()
                 collectorStartTime = maxOf(collectorStallTime + COLLECTOR_STALL_RELEASE_TIME, collectorStartTime)
 
-                if(collector.velocity < collectorPower * 0.2 && System.currentTimeMillis() - collectorStartTime > COLLECTOR_STALL_THRESHOLD) collectorStallTime = System.currentTimeMillis()
+                if(collector.velocity < collectorPower * 0.1 && System.currentTimeMillis() - collectorStartTime > COLLECTOR_STALL_THRESHOLD) collectorStallTime = System.currentTimeMillis()
 
                 collector.power = if(!collectorOn) 0.0
                 else if(System.currentTimeMillis() - collectorStallTime < COLLECTOR_STALL_RELEASE_TIME) -collectorPower
@@ -180,11 +182,12 @@ class Drive: LinearOpMode() {
                 }
 
                 // [Lift -> hook] "master -> slave" relationship
-                if(liftPower < 0) {
+                if(liftPower != 0.0) {
                     hookTarget = 0
                     hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
-                    hook.power = liftPower
-                } else if(liftPower == 0.0) {
+                    hook.power = if(liftPower < 0) liftPower * HOOK_MLT_DOWN
+                    else liftPower * HOOK_MLT_UP
+                } else {
                     if(gamepad2.right_stick_y != 0f) {
                         hookTarget = 0
                         hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
@@ -195,10 +198,6 @@ class Drive: LinearOpMode() {
                         hook.mode = DcMotor.RunMode.RUN_TO_POSITION
                         hook.power = HOLD_POWER
                     }
-                } else {
-                    hookTarget = 0
-                    hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
-                    hook.power = 0.0
                 }
 
                 // Servo control
