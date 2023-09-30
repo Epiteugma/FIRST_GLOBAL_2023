@@ -10,6 +10,7 @@ import com.qualcomm.robotcore.hardware.Servo
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit
 import org.firstinspires.ftc.robotcore.external.navigation.VoltageUnit
 import kotlin.concurrent.thread
+import kotlin.math.abs
 
 @TeleOp(name = "Drive (FGC 2023)", group = "FGC 2023")
 class Drive: LinearOpMode() {
@@ -18,20 +19,22 @@ class Drive: LinearOpMode() {
     private val COLLECTOR_STALL_THRESHOLD = 1000
     private val COLLECTOR_STALL_RELEASE_TIME = 500
 
+    private val LIFT_STALL_THRESHOLD = 1000
+
     private val DRIVE_MLT = 1.0
-    private val LIFT_MLT = 1.0
+    private val LIFT_MLT = 0.6
     private val COLLECTOR_MLT = 1.0
     private val HOLD_POWER = 1.0
     private val HOOK_MLT_UP = 1.0
-    private val HOOK_MLT_DOWN = 0.5
+    private val HOOK_MLT_DOWN = 1.0
 
     private val DRIVE_TYPE = MotorType.HD_HEX
     private val LIFT_TYPE = MotorType.HD_HEX
     private val COLLECTOR_TYPE = MotorType.HD_HEX
     private val HOOK_TYPE = MotorType.HD_HEX
 
-    private val FILTER_DOWNWARDS = arrayOf(0.447, 0.637)
-    private val FILTER_CENTER = arrayOf(0.766, 0.322)
+    private val FILTER_DOWNWARDS = arrayOf(0.454, 0.471)
+    private val FILTER_CENTER = arrayOf(0.740, 0.0)
 
     private val STORAGE_CLOSED = arrayOf(0.22, 1.0)
     private val STORAGE_OPEN = arrayOf(0.6, 0.62)
@@ -48,6 +51,8 @@ class Drive: LinearOpMode() {
     private lateinit var filterServoLeft: Servo
     private lateinit var storageServoRight: Servo
     private lateinit var storageServoLeft: Servo
+    private lateinit var clawServoLeft: Servo
+    private lateinit var clawServoRight: Servo
 
     // Collector toggle
     private var collectorOn = true
@@ -98,6 +103,14 @@ class Drive: LinearOpMode() {
     private var storageState = StorageState.CLOSED
     private var lastStorageState = StorageState.NONE
 
+    private val clawLeftMin = 0.0
+    private val clawRightMin = 0.0
+    private val clawLeftMax = 1.0
+    private val clawRightMax = 1.0
+
+    private var clawLeftPos = clawLeftMin
+    private var clawRightPos = clawRightMin
+
     override fun runOpMode() {
         // Hardware Initialization
         right = hardwareMap.get(DcMotorEx::class.java, "right")
@@ -111,6 +124,10 @@ class Drive: LinearOpMode() {
         filterServoLeft = hardwareMap.get(Servo::class.java, "filterLeft")
         storageServoRight = hardwareMap.get(Servo::class.java, "storageRight")
         storageServoLeft = hardwareMap.get(Servo::class.java, "storageLeft")
+        clawServoRight = hardwareMap.get(Servo::class.java, "clawRight")
+        clawServoLeft = hardwareMap.get(Servo::class.java, "clawLeft")
+
+        clawServoLeft.direction = Servo.Direction.REVERSE
 
         // Reverse the motors
         collector.direction = DcMotorSimple.Direction.REVERSE
@@ -126,7 +143,11 @@ class Drive: LinearOpMode() {
         val startTime = System.currentTimeMillis()
 
         // Driver 1 Thread
+        var last = System.nanoTime()
         thread(name = "DRIVER1", start = true) {
+            val delta = (System.nanoTime() - last) / 1e6
+            last = System.nanoTime()
+
             var collectorStartTime = 0L
             var collectorStallTime = 0L
             while (opModeIsActive()) {
@@ -157,11 +178,21 @@ class Drive: LinearOpMode() {
                 collector.power = if(!collectorOn) 0.0
                 else if(System.currentTimeMillis() - collectorStallTime < COLLECTOR_STALL_RELEASE_TIME) -collectorPower
                 else collectorPower
+
+                // Claw
+                val clawMove = ((if(gamepad1.right_bumper) 1 else 0) - (if(gamepad1.left_bumper) 1 else 0)) * delta / 50
+
+                clawLeftPos = maxOf(clawLeftMin, minOf(clawLeftMax, clawLeftPos + clawMove))
+                clawServoLeft.position = clawLeftPos
+
+                clawRightPos = maxOf(clawRightMin, minOf(clawRightMax, clawRightPos + clawMove))
+                clawServoRight.position = clawRightPos
             }
         }
 
         // Driver 2 Thread
         thread(name = "DRIVER2", start = true) {
+            var liftStartTime = 0L
             while (opModeIsActive()) {
                 // Lift (slide) movement
                 val liftPower = -gamepad2.left_stick_y * LIFT_MLT
@@ -169,6 +200,7 @@ class Drive: LinearOpMode() {
                     if(motor == leftLift) leftLiftTarget = 0
                     else rightLiftTarget = 0
                     motor.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
+                    if(motor.power == 0.0 && liftPower != 0.0) liftStartTime = System.currentTimeMillis()
                     motor.power = liftPower
                 } else for (motor in listOf(rightLift, leftLift)) {
                     if(motor == leftLift && leftLiftTarget == 0) leftLiftTarget = motor.currentPosition
@@ -182,11 +214,11 @@ class Drive: LinearOpMode() {
                 }
 
                 // [Lift -> hook] "master -> slave" relationship
-                if(liftPower != 0.0) {
+                if(liftPower != 0.0 && (abs(leftLift.velocity / liftTicksPerSec) > abs(leftLift.power * 0.1) || System.currentTimeMillis() < liftStartTime + LIFT_STALL_THRESHOLD)) {
                     hookTarget = 0
                     hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
-                    hook.power = if(liftPower < 0) -liftPower * HOOK_MLT_DOWN
-                    else -liftPower * HOOK_MLT_UP
+                    hook.power = if(liftPower < 0) liftPower * HOOK_MLT_DOWN / LIFT_MLT
+                    else liftPower * HOOK_MLT_UP / LIFT_MLT
                 } else {
                     if(gamepad2.right_stick_y != 0f) {
                         hookTarget = 0
