@@ -33,10 +33,11 @@ class Drive: LinearOpMode() {
     private val COLLECTOR_TYPE = MotorType.HD_HEX
     private val HOOK_TYPE = MotorType.HD_HEX
 
-    private val FILTER_DOWNWARDS = arrayOf(0.454, 0.471)
-    private val FILTER_CENTER = arrayOf(0.740, 0.0)
+    private val FILTER_UPWARDS = arrayOf(0.782, 0.0)
+    private val FILTER_CENTER = arrayOf(0.454, 0.441)
+    private val FILTER_DOWNWARDS = arrayOf(0.091, 0.838)
 
-    private val STORAGE_CLOSED = arrayOf(0.22, 1.0)
+    private val STORAGE_CLOSED = arrayOf(0.27, 0.95)
     private val STORAGE_OPEN = arrayOf(0.6, 0.62)
 
     // Hardware Devices
@@ -88,7 +89,8 @@ class Drive: LinearOpMode() {
     private enum class FilterState {
         NONE,
         DOWNWARDS,
-        CENTER;
+        CENTER,
+        UPWARDS;
     }
 
     private enum class StorageState {
@@ -238,6 +240,7 @@ class Drive: LinearOpMode() {
 
                 if(gamepad2.a) filterState = FilterState.DOWNWARDS
                 else if(gamepad2.x) filterState = FilterState.CENTER
+                else if(gamepad2.y) filterState = FilterState.UPWARDS
 
                 if(lastFilterState != filterState) {
                     when(filterState) {
@@ -248,6 +251,10 @@ class Drive: LinearOpMode() {
                         FilterState.CENTER -> {
                             filterServoRight.position = FILTER_CENTER[0]
                             filterServoLeft.position = FILTER_CENTER[1]
+                        }
+                        FilterState.UPWARDS -> {
+                            filterServoRight.position = FILTER_UPWARDS[0]
+                            filterServoLeft.position = FILTER_UPWARDS[1]
                         }
                         else -> {}
                     }
@@ -304,11 +311,11 @@ class Drive: LinearOpMode() {
 
             telemetry.addData("--- SERVOS ---", "")
             telemetry.addData("Storage state", storageState)
-            telemetry.addData("Left Storage Servo", storageServoRight.position)
-            telemetry.addData("Right Storage Servo", storageServoLeft.position)
+            telemetry.addData("Right Storage Servo", storageServoRight.position)
+            telemetry.addData("Left Storage Servo", storageServoLeft.position)
             telemetry.addData("Filter state", filterState)
-            telemetry.addData("Left Filter Servo", filterServoRight.position)
-            telemetry.addData("Right Filter Servo", filterServoLeft.position)
+            telemetry.addData("Right Filter Servo", filterServoRight.position)
+            telemetry.addData("Left Filter Servo", filterServoLeft.position)
             telemetry.addData("", "")
 
             telemetry.addData("--- HEALTH ---", "")
