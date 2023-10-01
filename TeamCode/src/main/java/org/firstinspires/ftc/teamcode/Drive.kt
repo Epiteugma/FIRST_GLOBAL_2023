@@ -19,25 +19,24 @@ class Drive: LinearOpMode() {
     private val COLLECTOR_STALL_THRESHOLD = 1000
     private val COLLECTOR_STALL_RELEASE_TIME = 500
 
-    private val LIFT_STALL_THRESHOLD = 1000
-
     private val DRIVE_MLT = 1.0
-    private val LIFT_MLT = 0.6
+    private val LIFT_MLT = 0.8
     private val COLLECTOR_MLT = 1.0
     private val HOLD_POWER = 1.0
     private val HOOK_MLT_UP = 1.0
     private val HOOK_MLT_DOWN = 1.0
+    private val HOOK_RELEASE_TICKS = 1000
 
     private val DRIVE_TYPE = MotorType.HD_HEX
     private val LIFT_TYPE = MotorType.HD_HEX
     private val COLLECTOR_TYPE = MotorType.HD_HEX
     private val HOOK_TYPE = MotorType.HD_HEX
 
-    private val FILTER_UPWARDS = arrayOf(0.782, 0.0)
-    private val FILTER_CENTER = arrayOf(0.454, 0.441)
-    private val FILTER_DOWNWARDS = arrayOf(0.091, 0.838)
+    private val FILTER_UPWARDS = arrayOf(0.358, 0.560)
+    private val FILTER_ALIGNED_WITH_HOOK = arrayOf(0.435, 0.472)
+    private val FILTER_DOWNWARDS = arrayOf(0.062, 0.859)
 
-    private val STORAGE_CLOSED = arrayOf(0.27, 0.95)
+    private val STORAGE_CLOSED = arrayOf(0.145, 1.0)
     private val STORAGE_OPEN = arrayOf(0.6, 0.62)
 
     // Hardware Devices
@@ -89,8 +88,8 @@ class Drive: LinearOpMode() {
     private enum class FilterState {
         NONE,
         DOWNWARDS,
-        CENTER,
-        UPWARDS;
+        UPWARDS,
+        ALIGN_WITH_HOOK;
     }
 
     private enum class StorageState {
@@ -100,7 +99,7 @@ class Drive: LinearOpMode() {
     }
 
     // Servo State Variables
-    private var filterState = FilterState.CENTER
+    private var filterState = FilterState.DOWNWARDS
     private var lastFilterState = FilterState.NONE
     private var storageState = StorageState.CLOSED
     private var lastStorageState = StorageState.NONE
@@ -155,8 +154,8 @@ class Drive: LinearOpMode() {
             while (opModeIsActive()) {
                 // Chassis movement
                 if(DRIVE_MODE == DriveMode.JOYSTICK) {
-                    left.power = -gamepad1.left_stick_y + gamepad1.left_stick_x * DRIVE_MLT
-                    right.power = -gamepad1.left_stick_y - gamepad1.left_stick_x * DRIVE_MLT
+                    left.power = -gamepad1.left_stick_y + gamepad1.right_stick_x * DRIVE_MLT
+                    right.power = -gamepad1.left_stick_y - gamepad1.right_stick_x * DRIVE_MLT
                 } else if(DRIVE_MODE == DriveMode.TANK) {
                     left.power = -gamepad1.left_stick_y * DRIVE_MLT
                     right.power = -gamepad1.right_stick_y * DRIVE_MLT
@@ -175,14 +174,14 @@ class Drive: LinearOpMode() {
                 if(collector.power == 0.0 && collectorOn) collectorStartTime = System.currentTimeMillis()
                 collectorStartTime = maxOf(collectorStallTime + COLLECTOR_STALL_RELEASE_TIME, collectorStartTime)
 
-                if(collector.velocity < collectorPower * 0.1 && System.currentTimeMillis() - collectorStartTime > COLLECTOR_STALL_THRESHOLD) collectorStallTime = System.currentTimeMillis()
+                if(collector.velocity == 0.0 && System.currentTimeMillis() - collectorStartTime > COLLECTOR_STALL_THRESHOLD) collectorStallTime = System.currentTimeMillis()
 
                 collector.power = if(!collectorOn) 0.0
                 else if(System.currentTimeMillis() - collectorStallTime < COLLECTOR_STALL_RELEASE_TIME) -collectorPower
                 else collectorPower
 
                 // Claw
-                val clawMove = ((if(gamepad1.right_bumper) 1 else 0) - (if(gamepad1.left_bumper) 1 else 0)) * delta / 50
+                val clawMove = (gamepad1.right_trigger - gamepad1.left_trigger) * delta / 50
 
                 clawLeftPos = maxOf(clawLeftMin, minOf(clawLeftMax, clawLeftPos + clawMove))
                 clawServoLeft.position = clawLeftPos
@@ -194,16 +193,16 @@ class Drive: LinearOpMode() {
 
         // Driver 2 Thread
         thread(name = "DRIVER2", start = true) {
-            var liftStartTime = 0L
+            var savedFilterState = FilterState.NONE;
             while (opModeIsActive()) {
                 // Lift (slide) movement
                 val liftPower = -gamepad2.left_stick_y * LIFT_MLT
                 if(gamepad2.left_stick_y != 0.0f) for (motor in listOf(rightLift, leftLift)) {
                     if(motor == leftLift) leftLiftTarget = 0
                     else rightLiftTarget = 0
+
                     motor.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
-                    if(motor.power == 0.0 && liftPower != 0.0) liftStartTime = System.currentTimeMillis()
-                    motor.power = liftPower
+                    motor.power = if(liftPower < 0) 0.0 else liftPower
                 } else for (motor in listOf(rightLift, leftLift)) {
                     if(motor == leftLift && leftLiftTarget == 0) leftLiftTarget = motor.currentPosition
                     else if(motor == rightLift && rightLiftTarget == 0) rightLiftTarget = motor.currentPosition
@@ -216,21 +215,44 @@ class Drive: LinearOpMode() {
                 }
 
                 // [Lift -> hook] "master -> slave" relationship
-                if(liftPower != 0.0 && (abs(leftLift.velocity / liftTicksPerSec) > abs(leftLift.power * 0.1) || System.currentTimeMillis() < liftStartTime + LIFT_STALL_THRESHOLD)) {
+                if(liftPower != 0.0 && abs(leftLift.velocity / liftTicksPerSec) > abs(leftLift.power * 0.1)) {
                     hookTarget = 0
                     hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
+
+                    if(liftPower < 0 && savedFilterState == FilterState.NONE) {
+                        savedFilterState = filterState
+                        filterState = FilterState.ALIGN_WITH_HOOK
+                    } else if(liftPower >= 0.0 && savedFilterState != FilterState.NONE) {
+                        filterState = savedFilterState
+                        savedFilterState = FilterState.NONE
+                    }
+
                     hook.power = if(liftPower < 0) liftPower * HOOK_MLT_DOWN / LIFT_MLT
                     else liftPower * HOOK_MLT_UP / LIFT_MLT
                 } else {
                     if(gamepad2.right_stick_y != 0f) {
                         hookTarget = 0
                         hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
+
+                        if(gamepad2.right_stick_y < 0.0 && savedFilterState == FilterState.NONE) {
+                            savedFilterState = filterState
+                            filterState = FilterState.ALIGN_WITH_HOOK
+                        } else if(gamepad2.right_stick_y >= 0.0 && savedFilterState != FilterState.NONE) {
+                            filterState = savedFilterState
+                            savedFilterState = FilterState.NONE
+                        }
+
                         hook.power = gamepad2.right_stick_y.toDouble()
                     } else {
-                        if (hookTarget == 0) hookTarget = hook.currentPosition
+                        if (hookTarget == 0) hookTarget = hook.currentPosition + HOOK_RELEASE_TICKS
                         hook.targetPosition = hookTarget
                         hook.mode = DcMotor.RunMode.RUN_TO_POSITION
                         hook.power = HOLD_POWER
+
+                        if(savedFilterState != FilterState.NONE) {
+                            filterState = savedFilterState
+                            savedFilterState = FilterState.NONE
+                        }
                     }
                 }
 
@@ -239,7 +261,6 @@ class Drive: LinearOpMode() {
                 else if(gamepad2.dpad_up) storageState = StorageState.OPEN
 
                 if(gamepad2.a) filterState = FilterState.DOWNWARDS
-                else if(gamepad2.x) filterState = FilterState.CENTER
                 else if(gamepad2.y) filterState = FilterState.UPWARDS
 
                 if(lastFilterState != filterState) {
@@ -248,13 +269,13 @@ class Drive: LinearOpMode() {
                             filterServoRight.position = FILTER_DOWNWARDS[0]
                             filterServoLeft.position = FILTER_DOWNWARDS[1]
                         }
-                        FilterState.CENTER -> {
-                            filterServoRight.position = FILTER_CENTER[0]
-                            filterServoLeft.position = FILTER_CENTER[1]
-                        }
                         FilterState.UPWARDS -> {
                             filterServoRight.position = FILTER_UPWARDS[0]
                             filterServoLeft.position = FILTER_UPWARDS[1]
+                        }
+                        FilterState.ALIGN_WITH_HOOK -> {
+                            filterServoLeft.position = FILTER_ALIGNED_WITH_HOOK[0]
+                            filterServoRight.position = FILTER_ALIGNED_WITH_HOOK[1]
                         }
                         else -> {}
                     }
@@ -298,7 +319,7 @@ class Drive: LinearOpMode() {
             telemetry.addData("Lock1", collectorLock1)
             telemetry.addData("Lock2", collectorLock2)
             telemetry.addData("Power", collector.velocity / collectorTicksPerSec)
-            telemetry.addData("Stall check", collector.velocity < collectorTicksPerSec * 0.2)
+            telemetry.addData("Stall check", collector.velocity == 0.0)
             telemetry.addData("", "")
 
             telemetry.addData("--- SLIDES ---", "")
