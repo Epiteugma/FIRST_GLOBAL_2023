@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.hardware.DcMotor
 import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.DcMotorSimple
 import com.qualcomm.robotcore.hardware.Servo
+import com.qualcomm.robotcore.hardware.TouchSensor
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit
 import org.firstinspires.ftc.robotcore.external.navigation.VoltageUnit
 import kotlin.concurrent.thread
@@ -22,19 +23,19 @@ class Drive: LinearOpMode() {
     private val DRIVE_MLT = 1.0
     private val LIFT_MLT = 0.8
     private val COLLECTOR_MLT = 1.0
-    private val HOLD_POWER = 1.0
-    private val HOOK_MLT_UP = 1.0
+    private val HOLD_POWER = 0.8
+    private val HOOK_MLT_UP = 0.0
     private val HOOK_MLT_DOWN = 1.0
-    private val HOOK_RELEASE_TICKS = 1000
+    private val HOOK_RELEASE_TICKS = 1200
 
     private val DRIVE_TYPE = MotorType.HD_HEX
     private val LIFT_TYPE = MotorType.HD_HEX
     private val COLLECTOR_TYPE = MotorType.HD_HEX
     private val HOOK_TYPE = MotorType.HD_HEX
 
-    private val FILTER_UPWARDS = arrayOf(0.358, 0.560)
-    private val FILTER_ALIGNED_WITH_HOOK = arrayOf(0.435, 0.472)
-    private val FILTER_DOWNWARDS = arrayOf(0.062, 0.859)
+    private val FILTER_UPWARDS = arrayOf(0.332, 0.166)
+    private val FILTER_ALIGNED_WITH_HOOK = arrayOf(0.482, 0.412)
+    private val FILTER_DOWNWARDS = arrayOf(0.0, 0.456)
 
     private val STORAGE_CLOSED = arrayOf(0.145, 1.0)
     private val STORAGE_OPEN = arrayOf(0.6, 0.62)
@@ -46,6 +47,7 @@ class Drive: LinearOpMode() {
     private lateinit var leftLift: DcMotorEx
     private lateinit var collector: DcMotorEx
     private lateinit var hook: DcMotorEx
+    private lateinit var slideResetButton: TouchSensor
 
     private lateinit var filterServoRight: Servo
     private lateinit var filterServoLeft: Servo
@@ -120,6 +122,7 @@ class Drive: LinearOpMode() {
         leftLift = hardwareMap.get(DcMotorEx::class.java, "leftLift")
         collector = hardwareMap.get(DcMotorEx::class.java, "collector")
         hook = hardwareMap.get(DcMotorEx::class.java, "hook")
+        slideResetButton = hardwareMap.get(TouchSensor::class.java, "slideReset")
 
         filterServoRight = hardwareMap.get(Servo::class.java, "filterRight")
         filterServoLeft = hardwareMap.get(Servo::class.java, "filterLeft")
@@ -194,6 +197,7 @@ class Drive: LinearOpMode() {
         // Driver 2 Thread
         thread(name = "DRIVER2", start = true) {
             var savedFilterState = FilterState.NONE;
+            var hookWasManual = false;
             while (opModeIsActive()) {
                 // Lift (slide) movement
                 val liftPower = -gamepad2.left_stick_y * LIFT_MLT
@@ -215,7 +219,7 @@ class Drive: LinearOpMode() {
                 }
 
                 // [Lift -> hook] "master -> slave" relationship
-                if(liftPower != 0.0 && abs(leftLift.velocity / liftTicksPerSec) > abs(leftLift.power * 0.1)) {
+                if(liftPower != 0.0 && !slideResetButton.isPressed) {
                     hookTarget = 0
                     hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
 
@@ -231,6 +235,7 @@ class Drive: LinearOpMode() {
                     else liftPower * HOOK_MLT_UP / LIFT_MLT
                 } else {
                     if(gamepad2.right_stick_y != 0f) {
+                        hookWasManual = true
                         hookTarget = 0
                         hook.mode = DcMotor.RunMode.RUN_WITHOUT_ENCODER
 
@@ -244,7 +249,8 @@ class Drive: LinearOpMode() {
 
                         hook.power = gamepad2.right_stick_y.toDouble()
                     } else {
-                        if (hookTarget == 0) hookTarget = hook.currentPosition + HOOK_RELEASE_TICKS
+                        if (hookTarget == 0) hookTarget = hook.currentPosition + (if(hookWasManual) 0 else HOOK_RELEASE_TICKS)
+                        hookWasManual = false
                         hook.targetPosition = hookTarget
                         hook.mode = DcMotor.RunMode.RUN_TO_POSITION
                         hook.power = HOLD_POWER
