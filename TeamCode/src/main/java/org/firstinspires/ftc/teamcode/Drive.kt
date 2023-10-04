@@ -33,8 +33,8 @@ class Drive: LinearOpMode() {
     private val COLLECTOR_TYPE = MotorType.HD_HEX
     private val HOOK_TYPE = MotorType.HD_HEX
 
-    private val FILTER_UPWARDS = arrayOf(0.332, 0.166)
-    private val FILTER_ALIGNED_WITH_HOOK = arrayOf(0.482, 0.412)
+    private val FILTER_UPWARDS = arrayOf(0.338, 0.166)
+    private val FILTER_ALIGNED_WITH_HOOK = arrayOf(0.437, 0.412)
     private val FILTER_DOWNWARDS = arrayOf(0.0, 0.456)
 
     private val STORAGE_CLOSED = arrayOf(0.145, 1.0)
