@@ -268,6 +268,7 @@ class Drive: LinearOpMode() {
 
                 if(gamepad2.a) filterState = FilterState.DOWNWARDS
                 else if(gamepad2.y) filterState = FilterState.UPWARDS
+                else if(gamepad2.x) filterState = FilterState.ALIGN_WITH_HOOK
 
                 if(lastFilterState != filterState) {
                     when(filterState) {
