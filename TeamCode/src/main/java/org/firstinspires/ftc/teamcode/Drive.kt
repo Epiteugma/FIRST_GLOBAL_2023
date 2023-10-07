@@ -344,6 +344,8 @@ class Drive: LinearOpMode() {
             telemetry.addData("Filter state", filterState)
             telemetry.addData("Right Filter Servo", filterServoRight.position)
             telemetry.addData("Left Filter Servo", filterServoLeft.position)
+            telemetry.addData("Right Hugger Servo", clawRightPos)
+            telemetry.addData("Left Hugger Servo", clawLeftPos)
             telemetry.addData("", "")
 
             telemetry.addData("--- HEALTH ---", "")
