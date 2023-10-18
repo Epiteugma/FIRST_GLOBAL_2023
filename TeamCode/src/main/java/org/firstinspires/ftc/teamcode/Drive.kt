@@ -17,11 +17,11 @@ import kotlin.math.abs
 class Drive: LinearOpMode() {
     // Control variables
     private val DRIVE_MODE = DriveMode.TANK
-    private val COLLECTOR_STALL_THRESHOLD = 1000
+    private val COLLECTOR_STALL_THRESHOLD = 1200
     private val COLLECTOR_STALL_RELEASE_TIME = 500
 
     private val DRIVE_MLT = 1.0
-    private val LIFT_MLT = 0.8
+    private val LIFT_MLT = 1.0
     private val COLLECTOR_MLT = 1.0
     private val HOLD_POWER = 0.8
     private val HOOK_MLT_UP = 0.0
@@ -37,8 +37,8 @@ class Drive: LinearOpMode() {
     private val FILTER_ALIGNED_WITH_HOOK = arrayOf(0.437, 0.412)
     private val FILTER_DOWNWARDS = arrayOf(0.0, 0.456)
 
-    private val STORAGE_CLOSED = arrayOf(0.145, 1.0)
-    private val STORAGE_OPEN = arrayOf(0.6, 0.62)
+    private val STORAGE_CLOSED = arrayOf(0.169, 1.0)
+    private val STORAGE_OPEN = arrayOf(0.544, 0.636)
 
     // Hardware Devices
     private lateinit var right: DcMotorEx
@@ -174,17 +174,17 @@ class Drive: LinearOpMode() {
                 val collectorPower = COLLECTOR_MLT
 
                 // Collector stall detection
-                if(collector.power == 0.0 && collectorOn) collectorStartTime = System.currentTimeMillis()
-                collectorStartTime = maxOf(collectorStallTime + COLLECTOR_STALL_RELEASE_TIME, collectorStartTime)
-
-                if(collector.velocity == 0.0 && System.currentTimeMillis() - collectorStartTime > COLLECTOR_STALL_THRESHOLD) collectorStallTime = System.currentTimeMillis()
+//                if(collector.power == 0.0 && collectorOn) collectorStartTime = System.currentTimeMillis()
+//                collectorStartTime = maxOf(collectorStallTime + COLLECTOR_STALL_RELEASE_TIME, collectorStartTime)
+//
+//                if(collector.velocity == 0.0 && System.currentTimeMillis() - collectorStartTime > COLLECTOR_STALL_THRESHOLD) collectorStallTime = System.currentTimeMillis()
 
                 collector.power = if(!collectorOn) 0.0
-                else if(System.currentTimeMillis() - collectorStallTime < COLLECTOR_STALL_RELEASE_TIME) -collectorPower
-                else collectorPower
+//                else if(System.currentTimeMillis() - collectorStallTime < COLLECTOR_STALL_RELEASE_TIME) -collectorPower
+                else collectorPower * (if(gamepad1.dpad_up) -1 else 1)
 
                 // Claw
-                val clawMove = (gamepad1.right_trigger - gamepad1.left_trigger) * delta / 50
+                val clawMove = (gamepad1.right_trigger - gamepad1.left_trigger) * delta / 25
 
                 clawLeftPos = maxOf(clawLeftMin, minOf(clawLeftMax, clawLeftPos + clawMove))
                 clawServoLeft.position = clawLeftPos
@@ -263,8 +263,8 @@ class Drive: LinearOpMode() {
                 }
 
                 // Servo control
-                if(gamepad2.dpad_down) storageState = StorageState.CLOSED
-                else if(gamepad2.dpad_up) storageState = StorageState.OPEN
+                if(gamepad2.dpad_up) storageState = StorageState.CLOSED
+                else if(gamepad2.dpad_down) storageState = StorageState.OPEN
 
                 if(gamepad2.a) filterState = FilterState.DOWNWARDS
                 else if(gamepad2.y) filterState = FilterState.UPWARDS
